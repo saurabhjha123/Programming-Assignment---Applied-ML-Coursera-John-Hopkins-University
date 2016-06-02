@@ -1,0 +1,180 @@
+---
+title: "Prediction assignment"
+author: "Saurabh Jha"
+date: "Wednesday, June 01, 2016"
+output: html_document
+---
+
+To predict classe in this problem I had first found that individuals are different using plot of 1st two principal components from standardized training data and then build separate boosting classification trees for each individual separately to predict the outcome using all the complete variables (with no missing data)
+
+Steps -
+
+1. Training data preparation
+   - Checked data in MS Excel and removed variables with missing data. 
+   - Also removed time stamp data due to very few days of data and also plot of principal components   was not showing any pattern as per time stamp.
+   - Included all other variables in analysis.
+   - Standardized/Normalized data for better comparisons.
+   
+2. Model building
+  - On plotting principal component 1 and 2 of training data found that every person is different, and hence everyone should be treated separately in model.
+  - Used adaboost models for multiple classification with 10 fold CV error values to find right model.
+  - With number of iterations = 10,model CV error reached approximately 0 for every user.
+    (carlitos 0.0003, adelmo 0.0008, charles 0.00031, eurico 0.0055, jeremy 0.0079, pedro 0.00843)
+    
+3. Predicting of test data 
+  - Data preparation of test data.
+  - Standardized test data using mean and standard deviation from training data.
+  - All predictions in quiz questions were correct on using these models.
+
+Step by Step code 
+- Loading and processing training data
+
+```{r}
+library(caret)
+library(adabag)
+
+data_train<-read.csv("pml-training_check2.csv", header=T)
+
+set.seed(100)
+```
+ - Droping timestamp variables
+
+```{r}
+
+dropc<-names(data_train) %in% c("raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp")
+
+data1<-data_train[!dropc]
+
+```
+
+- Standardizing/Normalizing training data using caret package
+
+```{r}
+preObj <- preProcess(data1[,c(-1,-2,-3,-56)],method=c("center","scale"))
+
+train_norm <- predict(preObj, data1)
+
+
+```
+
+- Taking principal components
+
+```{r}
+dropc2<-names(train_norm) %in% c("new_window","num_window")
+train_norm<-train_norm[!dropc2]
+
+prComps <- prcomp(train_norm[,2:53])
+
+PC <- data.frame(cbind(prComps$x[,1],prComps$x[,2]))
+
+PC$user_name <- train_norm$user_name
+
+```
+
+- Ploting 1st and 2nd principal component from training data
+
+It clearly shows that every individual is different and should be considered separately for predicting classe.
+
+```{r, echo=FALSE}
+
+qplot(x=X1, y=X2, data=PC, color=user_name)
+
+```
+
+- Dividing data into subsets for each user
+
+```{r}
+
+train_norm$classe <- factor(train_norm$classe)
+
+train_carlitos <- subset(train_norm,train_norm$user_name=='carlitos')
+train_adelmo <- subset(train_norm,train_norm$user_name=='adelmo')
+train_charles <- subset(train_norm, train_norm$user_name=='charles')
+train_eurico <- subset(train_norm, train_norm$user_name=='eurico')
+train_jeremy <- subset(train_norm, train_norm$user_name=='jeremy')
+train_pedro <- subset(train_norm, train_norm$user_name=='pedro')
+
+```
+
+- Fitting model 
+
+
+```{r}
+
+# Fitting multi class adaboost
+
+mod1<-boosting(classe ~ ., data=train_carlitos, boos = TRUE, mfinal = 10, coeflearn = 'Breiman')
+
+
+mod2<-boosting(classe ~ ., data=train_adelmo, boos = TRUE, mfinal = 10, coeflearn = 'Breiman')
+
+
+mod3<-boosting(classe ~ ., data=train_charles, boos = TRUE, mfinal = 10, coeflearn = 'Breiman')
+
+
+mod4<-boosting(classe ~ ., data=train_eurico, boos = TRUE, mfinal = 10, coeflearn = 'Breiman')
+
+
+mod5<-boosting(classe ~ ., data=train_jeremy, boos = TRUE, mfinal = 10, coeflearn = 'Breiman')
+
+
+mod6<-boosting(classe ~ ., data=train_pedro, boos = TRUE, mfinal = 10, coeflearn = 'Breiman')
+
+
+```
+
+
+Preparing test data for predicting "classe"
+
+```{r}
+test_data <- read.csv("pml-testing_check2.csv", header=T)
+
+test_norm <- predict(preObj, test_data)  # Same Standardization as per Training data
+
+test_carlitos <- subset(test_norm, test_norm$user_name=='carlitos')
+test_adelmo <- subset(test_norm, test_norm$user_name=='adelmo')
+test_charles <- subset(test_norm, test_norm$user_name=='charles')
+test_eurico <- subset(test_norm, test_norm$user_name=='eurico')
+test_jeremy <- subset(test_norm, test_norm$user_name=='jeremy')
+test_pedro <- subset(test_norm, test_norm$user_name=='pedro')
+
+```
+
+Predicting using models from training data.
+
+
+```{r}
+
+pred_carlitos<-predict.boosting(mod1,newdata=test_carlitos)
+pred_adelmo<-predict.boosting(mod2,newdata=test_adelmo)
+pred_charles<-predict.boosting(mod3,newdata=test_charles)
+pred_eurico<-predict.boosting(mod4,newdata=test_eurico)
+pred_jeremy<-predict.boosting(mod5,newdata=test_jeremy)
+pred_pedro<-predict.boosting(mod6,newdata=test_pedro)
+
+test_carlitos$prediction<-pred_carlitos$class
+test_adelmo$prediction<-pred_adelmo$class
+test_charles$prediction<-pred_charles$class
+test_eurico$prediction<-pred_eurico$class
+test_jeremy$prediction<-pred_jeremy$class
+test_pedro$prediction<-pred_pedro$class
+
+pred_all<-data.frame(rbind(test_carlitos,test_adelmo,test_charles,test_eurico,test_jeremy,test_pedro))
+
+pred_all$col_num <- c(9,11,18,4,10,5,13,16,20,2,3,6,7,8,12,14,15,1,17,19)
+
+pred_all <- pred_all[order(pred_all$col_num),]
+
+keep1<-names(pred_all) %in% c("user_name","prediction","col_num")
+
+pred_output<-pred_all[keep1]
+
+```
+
+- Prediction Output for test data
+
+```{r, echo=FALSE}
+
+print(pred_output)
+
+```
